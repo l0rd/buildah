@@ -34,6 +34,7 @@ import (
 	"go.podman.io/common/libimage"
 	nettypes "go.podman.io/common/libnetwork/types"
 	"go.podman.io/common/pkg/config"
+	"go.podman.io/image/v5/docker"
 	"go.podman.io/image/v5/docker/reference"
 	"go.podman.io/image/v5/manifest"
 	"go.podman.io/image/v5/pkg/compression"
@@ -286,6 +287,22 @@ func newExecutor(logger *logrus.Logger, logPrefix string, store storage.Store, o
 		}
 		buildOutputs = append(buildOutputs, buildOutputOption)
 	}
+	// A name given in an output is used like a --tag value.
+	outputName := options.Output
+	additionalTags := options.AdditionalTags
+	for _, buildOutput := range buildOutputs {
+		if buildOutput.Name == "" {
+			continue
+		}
+		if outputName == "" {
+			outputName = buildOutput.Name
+		} else {
+			additionalTags = append(slices.Clone(additionalTags), buildOutput.Name)
+		}
+	}
+	if outputName == "" && slices.ContainsFunc(buildOutputs, isRegistryBuildOutput) {
+		return nil, errors.New("a name for the image is needed when pushing it to a registry")
+	}
 
 	wrappedAdditionalBuildContexts := make(map[string]*additionalBuildContext, len(options.AdditionalBuildContexts))
 	for name, ctx := range options.AdditionalBuildContexts {
@@ -323,9 +340,9 @@ func newExecutor(logger *logrus.Logger, logPrefix string, store storage.Store, o
 		compressionFormat:                       options.CompressionFormat,
 		compressionLevel:                        options.CompressionLevel,
 		forceCompressionFormat:                  options.ForceCompressionFormat,
-		output:                                  options.Output,
+		output:                                  outputName,
 		outputFormat:                            options.OutputFormat,
-		additionalTags:                          options.AdditionalTags,
+		additionalTags:                          additionalTags,
 		signaturePolicyPath:                     options.SignaturePolicyPath,
 		sourcePolicy:                            srcPolicy,
 		skipUnusedStages:                        options.SkipUnusedStages,
@@ -501,6 +518,43 @@ func (b *executor) resolveNameToImageRef(output string) (types.ImageReference, e
 	}
 
 	return imageRef, err
+}
+
+func isRegistryBuildOutput(buildOutput output.BuildOutputOption) bool {
+	return buildOutput.Type == output.BuildOutputRegistry
+}
+
+// pushToRegistry pushes the image with ID imageID to the registry location of
+// each of the names given to the built image.
+func (b *executor) pushToRegistry(ctx context.Context, imageID string) error {
+	for _, name := range append([]string{b.output}, b.additionalTags...) {
+		named, err := libimage.NormalizeName(name)
+		if err != nil {
+			return fmt.Errorf("parsing image name %q: %w", name, err)
+		}
+		dest, err := docker.NewReference(named)
+		if err != nil {
+			return fmt.Errorf("creating registry reference for %q: %w", named.String(), err)
+		}
+		options := buildah.PushOptions{
+			Compression:            b.compression,
+			CompressionFormat:      b.compressionFormat,
+			CompressionLevel:       b.compressionLevel,
+			ForceCompressionFormat: b.forceCompressionFormat,
+			SignaturePolicyPath:    b.signaturePolicyPath,
+			ReportWriter:           b.reportWriter,
+			Store:                  b.store,
+			SystemContext:          b.systemContext,
+			BlobDirectory:          b.blobDirectory,
+			SignBy:                 b.signBy,
+			MaxRetries:             b.maxPullPushRetries,
+			RetryDelay:             b.retryPullPushDelay,
+		}
+		if _, _, err := buildah.Push(ctx, imageID, dest, options); err != nil {
+			return fmt.Errorf("pushing image to %q: %w", transports.ImageName(dest), err)
+		}
+	}
+	return nil
 }
 
 // stageIndex locates a stage by a string which can be either its name or its
@@ -1407,6 +1461,12 @@ func (b *executor) Build(ctx context.Context, stages imagebuilder.Stages) (image
 			if len(b.additionalTags) > 0 {
 				b.logger.Warnf("don't know how to add tags to images stored in %q transport", dest.Transport().Name())
 			}
+		}
+	}
+
+	if slices.ContainsFunc(b.buildOutputs, isRegistryBuildOutput) {
+		if err := b.pushToRegistry(ctx, imageID); err != nil {
+			return imageID, ref, err
 		}
 	}
 

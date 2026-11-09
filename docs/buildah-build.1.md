@@ -801,11 +801,15 @@ The value for --output is a comma-separated sequence of key=value pairs,
 defining the output type and options.
 
 Supported _keys_ are:
- **dest**: Destination for exported output. Can be set to `-` to indicate standard output, or to an absolute or relative path.
+ **dest**: Destination for exported output. Can be set to `-` to indicate standard output, or to an absolute or relative path. Ignored by the **image** and **registry** types.
+ **name**: An additional name for the image, used like a **--tag** value. Only valid with the **image** and **registry** types.
+ **push**: With **type=image**, `true` to also push the image to a registry, like **type=registry**.
  **type**: Defines the type of output to be written. Must be one of the values listed below.
 
 Valid _type_ values are:
+ **image**: write the image to local storage. This is what a build does without **--output**.
  **local**: write the resulting build files to a directory on the client-side.
+ **registry**: write the image to local storage and push it to a registry, using each of its names (from **--tag** and **name**) as the destination. Needs at least one name.
  **tar**: write the resulting files as a single tarball (.tar).
 
 Alternatively, instead of a comma-separated sequence, the value of **--output**

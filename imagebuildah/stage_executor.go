@@ -1500,9 +1500,19 @@ func (s *stageExecutor) execute(ctx context.Context, base string) (imgID string,
 		}
 	}
 
+	// Collect the outputs generated from the root filesystem of the last stage.
 	var buildOutputOptions []output.BuildOutputOption
 	if lastStage {
-		buildOutputOptions = s.executor.buildOutputs
+		for _, buildOutputOption := range s.executor.buildOutputs {
+			switch buildOutputOption.Type {
+			case output.BuildOutputStdout, output.BuildOutputLocalDir, output.BuildOutputTar:
+				buildOutputOptions = append(buildOutputOptions, buildOutputOption)
+			case output.BuildOutputImage, output.BuildOutputRegistry:
+				// Handled by the executor, once the image is committed and named.
+			default:
+				return "", nil, false, fmt.Errorf("internal error: unexpected build output type %v", buildOutputOption.Type)
+			}
+		}
 	}
 
 	if len(children) == 0 {
