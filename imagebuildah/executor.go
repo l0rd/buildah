@@ -557,6 +557,41 @@ func (b *executor) pushToRegistry(ctx context.Context, imageID string) error {
 	return nil
 }
 
+// saveToArchive saves the image with ID imageID to the docker-archive or
+// oci-archive file of buildOutput, using the names given to the built image
+// as the names recorded in the archive.
+func (b *executor) saveToArchive(ctx context.Context, imageID string, buildOutput output.BuildOutputOption) error {
+	runtime, err := libimage.RuntimeFromStore(b.store, &libimage.RuntimeOptions{SystemContext: b.systemContext})
+	if err != nil {
+		return err
+	}
+	var names []string
+	if b.output != "" {
+		names = append([]string{b.output}, b.additionalTags...)
+	}
+	options := &libimage.SaveOptions{}
+	options.Writer = b.reportWriter
+	options.SignaturePolicyPath = b.signaturePolicyPath
+	switch buildOutput.Type {
+	case output.BuildOutputDockerArchive:
+		options.AdditionalTags = names
+		err = runtime.Save(ctx, []string{imageID}, "docker-archive", buildOutput.Path, options)
+	case output.BuildOutputOCIArchive:
+		// The archive records a single name: the one used to look up the image.
+		name := imageID
+		if len(names) > 0 {
+			name = names[0]
+		}
+		err = runtime.Save(ctx, []string{name}, "oci-archive", buildOutput.Path, options)
+	default:
+		return fmt.Errorf("internal error: build output type %v is not an archive", buildOutput.Type)
+	}
+	if err != nil {
+		return fmt.Errorf("saving image to %s %q: %w", buildOutput.Type, buildOutput.Path, err)
+	}
+	return nil
+}
+
 // stageIndex locates a stage by a string which can be either its name or its
 // position, returning the position and the corresponding stageExecutor if a
 // match is found.  If not, it returns -1 and nil.  Acquires b.stagesLock, as
@@ -1467,6 +1502,13 @@ func (b *executor) Build(ctx context.Context, stages imagebuilder.Stages) (image
 	if slices.ContainsFunc(b.buildOutputs, isRegistryBuildOutput) {
 		if err := b.pushToRegistry(ctx, imageID); err != nil {
 			return imageID, ref, err
+		}
+	}
+	for _, buildOutput := range b.buildOutputs {
+		if buildOutput.Type == output.BuildOutputDockerArchive || buildOutput.Type == output.BuildOutputOCIArchive {
+			if err := b.saveToArchive(ctx, imageID, buildOutput); err != nil {
+				return imageID, ref, err
+			}
 		}
 	}
 

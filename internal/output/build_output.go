@@ -9,12 +9,14 @@ import (
 type BuildOutputType int
 
 const (
-	BuildOutputInvalid  BuildOutputType = 0
-	BuildOutputStdout   BuildOutputType = 1 // stream tar to stdout
-	BuildOutputLocalDir BuildOutputType = 2
-	BuildOutputTar      BuildOutputType = 3
-	BuildOutputImage    BuildOutputType = 4 // the image written to local storage, as without --output
-	BuildOutputRegistry BuildOutputType = 5 // the image written to local storage and pushed to a registry
+	BuildOutputInvalid       BuildOutputType = 0
+	BuildOutputStdout        BuildOutputType = 1 // stream tar to stdout
+	BuildOutputLocalDir      BuildOutputType = 2
+	BuildOutputTar           BuildOutputType = 3
+	BuildOutputImage         BuildOutputType = 4 // the image written to local storage, as without --output
+	BuildOutputRegistry      BuildOutputType = 5 // the image written to local storage and pushed to a registry
+	BuildOutputDockerArchive BuildOutputType = 6 // the image written to local storage and saved as a docker-archive
+	BuildOutputOCIArchive    BuildOutputType = 7 // the image written to local storage and saved as an oci-archive
 )
 
 func (b BuildOutputType) String() string {
@@ -31,6 +33,10 @@ func (b BuildOutputType) String() string {
 		return "image"
 	case BuildOutputRegistry:
 		return "registry"
+	case BuildOutputDockerArchive:
+		return "docker-archive"
+	case BuildOutputOCIArchive:
+		return "oci-archive"
 	}
 	return fmt.Sprintf("unknown %d!", int(b))
 }
@@ -38,9 +44,10 @@ func (b BuildOutputType) String() string {
 // BuildOutputOptions contains the outcome of parsing the value of a build --output flag
 type BuildOutputOption struct {
 	Type BuildOutputType
-	Path string // Only valid if Type is local dir or tar
+	Path string // Only valid if Type is local dir, tar, docker archive or OCI archive
 	// Name is an additional name for the image, with the same meaning as a
-	// --tag value. Only valid if Type is image or registry; empty if unset.
+	// --tag value. Only valid if Type is image, registry, docker archive or
+	// OCI archive; empty if unset.
 	Name string
 }
 
@@ -121,12 +128,21 @@ func GetBuildOutput(buildOutput string) (BuildOutputOption, error) {
 		}
 	case "registry":
 		typeSelected = BuildOutputRegistry
+	case "docker":
+		// Without a destination, docker loads the image into its image
+		// store, which for us is the local storage.
+		typeSelected = BuildOutputImage
+		if pathSelected != "" {
+			typeSelected = BuildOutputDockerArchive
+		}
+	case "oci":
+		typeSelected = BuildOutputOCIArchive
 	default:
 		return BuildOutputOption{}, fmt.Errorf("invalid type %q selected for build output options %q", typeValue, buildOutput)
 	}
 
 	// Validate the keys that only apply to some types
-	if name != "" && typeSelected != BuildOutputImage && typeSelected != BuildOutputRegistry {
+	if name != "" && (typeSelected == BuildOutputLocalDir || typeSelected == BuildOutputTar) {
 		return BuildOutputOption{}, fmt.Errorf("key %q is not supported with type %q in build output option: %q", "name", typeValue, buildOutput)
 	}
 	if pushFound && typeValue != "image" {
@@ -134,7 +150,7 @@ func GetBuildOutput(buildOutput string) (BuildOutputOption, error) {
 	}
 
 	// Validate path
-	if typeSelected == BuildOutputLocalDir || typeSelected == BuildOutputTar {
+	if typeSelected == BuildOutputLocalDir || typeSelected == BuildOutputTar || typeSelected == BuildOutputDockerArchive || typeSelected == BuildOutputOCIArchive {
 		if pathSelected == "" {
 			return BuildOutputOption{}, fmt.Errorf("missing required key %q in build output option: %q", "dest", buildOutput)
 		}

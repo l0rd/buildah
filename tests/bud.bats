@@ -3043,6 +3043,36 @@ _EOF
   expect_output --substring 'key "name" is not supported with type "local"'
 }
 
+@test "build with custom build output to docker and oci" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  local imgname="img-$(safename)"
+  run_buildah build --output type=docker --iidfile $mytmpdir/iid $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  run_buildah inspect --format '{{.FromImageID}}' $imgname
+  assert "sha256:$output" = "$(< $mytmpdir/iid)" "type=docker without dest writes the image to local storage"
+
+  run_buildah build --output type=docker,dest=$mytmpdir/docker.tar,name=$imgname-n $WITH_POLICY_JSON -t $imgname-t -f $mytmpdir/Containerfile .
+  run tar -xOf $mytmpdir/docker.tar manifest.json
+  assert "$status" = 0 "docker.tar is a docker archive"
+  assert "$output" =~ "localhost/$imgname-t:latest" "docker archive has the --tag name"
+  assert "$output" =~ "localhost/$imgname-n:latest" "docker archive has the name= name"
+  run_buildah pull -q $WITH_POLICY_JSON docker-archive:$mytmpdir/docker.tar
+
+  run_buildah build --output type=oci,dest=$mytmpdir/oci.tar $WITH_POLICY_JSON -t $imgname-o -f $mytmpdir/Containerfile .
+  run tar -xOf $mytmpdir/oci.tar index.json
+  assert "$status" = 0 "oci.tar is an OCI archive"
+  assert "$output" =~ "localhost/$imgname-o:latest" "OCI archive has the --tag name"
+  run_buildah pull -q $WITH_POLICY_JSON oci-archive:$mytmpdir/oci.tar
+
+  run_buildah 125 build --output type=oci $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring 'missing required key "dest"'
+}
+
 @test "build with custom build output to registry" {
   _prefetch alpine
   mytmpdir=${TEST_SCRATCH_DIR}/my-dir

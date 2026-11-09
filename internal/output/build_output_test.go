@@ -90,6 +90,46 @@ func TestGetBuildOutput(t *testing.T) {
 			},
 		},
 		{
+			description: "docker-without-dest",
+			input:       "type=docker,name=example.com/image",
+			output: BuildOutputOption{
+				Type: BuildOutputImage,
+				Name: "example.com/image",
+			},
+		},
+		{
+			description: "docker-with-dest",
+			input:       "type=docker,dest=/tmp/image.tar,name=example.com/image",
+			output: BuildOutputOption{
+				Type: BuildOutputDockerArchive,
+				Path: "/tmp/image.tar",
+				Name: "example.com/image",
+			},
+		},
+		{
+			description: "oci-with-dest",
+			input:       "type=oci,dest=/tmp/image.tar",
+			output: BuildOutputOption{
+				Type: BuildOutputOCIArchive,
+				Path: "/tmp/image.tar",
+			},
+		},
+		{
+			description: "oci-without-dest",
+			input:       "type=oci",
+			invalid:     true,
+		},
+		{
+			description: "docker-to-stdout",
+			input:       "type=docker,dest=-",
+			invalid:     true,
+		},
+		{
+			description: "push-with-docker",
+			input:       "type=docker,push=true",
+			invalid:     true,
+		},
+		{
 			description: "missing-type",
 			input:       "name=example.com/image",
 			invalid:     true,
