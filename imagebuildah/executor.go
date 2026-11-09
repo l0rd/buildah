@@ -25,6 +25,7 @@ import (
 	"go.podman.io/buildah/define"
 	"go.podman.io/buildah/internal"
 	"go.podman.io/buildah/internal/metadata"
+	"go.podman.io/buildah/internal/output"
 	internalUtil "go.podman.io/buildah/internal/util"
 	"go.podman.io/buildah/pkg/parse"
 	"go.podman.io/buildah/pkg/sourcepolicy"
@@ -178,9 +179,9 @@ type executor struct {
 	unsetEnvs                               []string
 	unsetLabels                             []string
 	unsetAnnotations                        []string
-	processLabel                            string   // processLabel to assign to all RUN instructions
-	mountLabel                              string   // mountLabel to assign for all containers in all stages
-	buildOutputs                            []string // values for internal/output.GetBuildOutput()
+	processLabel                            string // processLabel to assign to all RUN instructions
+	mountLabel                              string // mountLabel to assign for all containers in all stages
+	buildOutputs                            []output.BuildOutputOption
 	osVersion                               string
 	osFeatures                              []string
 	envs                                    []string
@@ -273,9 +274,17 @@ func newExecutor(logger *logrus.Logger, logPrefix string, store storage.Store, o
 		}
 	}
 
-	buildOutputs := slices.Clone(options.BuildOutputs)
+	buildOutputValues := slices.Clone(options.BuildOutputs)
 	if options.BuildOutput != "" { //nolint:staticcheck
-		buildOutputs = append(buildOutputs, options.BuildOutput) //nolint:staticcheck
+		buildOutputValues = append(buildOutputValues, options.BuildOutput) //nolint:staticcheck
+	}
+	buildOutputs := make([]output.BuildOutputOption, 0, len(buildOutputValues))
+	for _, buildOutput := range buildOutputValues {
+		buildOutputOption, err := output.GetBuildOutput(buildOutput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse build output %q: %w", buildOutput, err)
+		}
+		buildOutputs = append(buildOutputs, buildOutputOption)
 	}
 
 	wrappedAdditionalBuildContexts := make(map[string]*additionalBuildContext, len(options.AdditionalBuildContexts))

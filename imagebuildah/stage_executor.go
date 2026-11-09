@@ -1500,17 +1500,9 @@ func (s *stageExecutor) execute(ctx context.Context, base string) (imgID string,
 		}
 	}
 
-	// Parse and populate buildOutputOption if needed
 	var buildOutputOptions []output.BuildOutputOption
-	if lastStage && len(s.executor.buildOutputs) > 0 {
-		for _, buildOutput := range s.executor.buildOutputs {
-			logrus.Debugf("generating custom build output with options %q", buildOutput)
-			buildOutputOption, err := output.GetBuildOutput(buildOutput)
-			if err != nil {
-				return "", nil, false, fmt.Errorf("failed to parse build output %q: %w", buildOutput, err)
-			}
-			buildOutputOptions = append(buildOutputOptions, buildOutputOption)
-		}
+	if lastStage {
+		buildOutputOptions = s.executor.buildOutputs
 	}
 
 	if len(children) == 0 {
@@ -2935,6 +2927,7 @@ func (s *stageExecutor) commit(ctx context.Context, createdBy string, emptyLayer
 }
 
 func (s *stageExecutor) generateBuildOutput(ctx context.Context, buildOutputOpts output.BuildOutputOption) error {
+	logrus.Debugf("generating custom build output with options %+v", buildOutputOpts)
 	forceTimestamp := s.executor.timestamp
 	if s.executor.sourceDateEpoch != nil {
 		forceTimestamp = s.executor.sourceDateEpoch
