@@ -17,6 +17,7 @@ const (
 	BuildOutputRegistry      BuildOutputType = 5 // the image written to local storage and pushed to a registry
 	BuildOutputDockerArchive BuildOutputType = 6 // the image written to local storage and saved as a docker-archive
 	BuildOutputOCIArchive    BuildOutputType = 7 // the image written to local storage and saved as an oci-archive
+	BuildOutputCacheOnly     BuildOutputType = 8 // the image written to local storage without a name, only as build cache
 )
 
 func (b BuildOutputType) String() string {
@@ -37,6 +38,8 @@ func (b BuildOutputType) String() string {
 		return "docker-archive"
 	case BuildOutputOCIArchive:
 		return "oci-archive"
+	case BuildOutputCacheOnly:
+		return "cacheonly"
 	}
 	return fmt.Sprintf("unknown %d!", int(b))
 }
@@ -137,12 +140,14 @@ func GetBuildOutput(buildOutput string) (BuildOutputOption, error) {
 		}
 	case "oci":
 		typeSelected = BuildOutputOCIArchive
+	case "cacheonly":
+		typeSelected = BuildOutputCacheOnly
 	default:
 		return BuildOutputOption{}, fmt.Errorf("invalid type %q selected for build output options %q", typeValue, buildOutput)
 	}
 
 	// Validate the keys that only apply to some types
-	if name != "" && (typeSelected == BuildOutputLocalDir || typeSelected == BuildOutputTar) {
+	if name != "" && (typeSelected == BuildOutputLocalDir || typeSelected == BuildOutputTar || typeSelected == BuildOutputCacheOnly) {
 		return BuildOutputOption{}, fmt.Errorf("key %q is not supported with type %q in build output option: %q", "name", typeValue, buildOutput)
 	}
 	if pushFound && typeValue != "image" {

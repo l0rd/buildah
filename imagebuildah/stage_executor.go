@@ -1507,7 +1507,7 @@ func (s *stageExecutor) execute(ctx context.Context, base string) (imgID string,
 			switch buildOutputOption.Type {
 			case output.BuildOutputStdout, output.BuildOutputLocalDir, output.BuildOutputTar:
 				buildOutputOptions = append(buildOutputOptions, buildOutputOption)
-			case output.BuildOutputImage, output.BuildOutputRegistry, output.BuildOutputDockerArchive, output.BuildOutputOCIArchive:
+			case output.BuildOutputImage, output.BuildOutputRegistry, output.BuildOutputDockerArchive, output.BuildOutputOCIArchive, output.BuildOutputCacheOnly:
 				// Handled by the executor, once the image is committed and named.
 			default:
 				return "", nil, false, fmt.Errorf("internal error: unexpected build output type %v", buildOutputOption.Type)

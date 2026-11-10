@@ -300,6 +300,13 @@ func newExecutor(logger *logrus.Logger, logPrefix string, store storage.Store, o
 			additionalTags = append(slices.Clone(additionalTags), buildOutput.Name)
 		}
 	}
+	if slices.ContainsFunc(buildOutputs, isCacheOnlyBuildOutput) {
+		if len(buildOutputs) > 1 {
+			return nil, errors.New("build output type cacheonly can not be combined with other build outputs")
+		}
+		// Nothing is exported: the image is committed without a name.
+		outputName, additionalTags = "", nil
+	}
 	if outputName == "" && slices.ContainsFunc(buildOutputs, isRegistryBuildOutput) {
 		return nil, errors.New("a name for the image is needed when pushing it to a registry")
 	}
@@ -522,6 +529,10 @@ func (b *executor) resolveNameToImageRef(output string) (types.ImageReference, e
 
 func isRegistryBuildOutput(buildOutput output.BuildOutputOption) bool {
 	return buildOutput.Type == output.BuildOutputRegistry
+}
+
+func isCacheOnlyBuildOutput(buildOutput output.BuildOutputOption) bool {
+	return buildOutput.Type == output.BuildOutputCacheOnly
 }
 
 // pushToRegistry pushes the image with ID imageID to the registry location of

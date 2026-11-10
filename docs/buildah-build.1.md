@@ -807,6 +807,7 @@ Supported _keys_ are:
  **type**: Defines the type of output to be written. Must be one of the values listed below.
 
 Valid _type_ values are:
+ **cacheonly**: build the image without exporting it: the image is not given the **--tag** names. With **--layers**, it is kept in local storage as build cache for later builds. Cannot be combined with other **--output** values.
  **docker**: without **dest**, the same as **image**. With **dest**, also save the image to a `docker-archive` file, recording its names (from **--tag** and **name**) in it. **dest** cannot be `-`.
  **image**: write the image to local storage. This is what a build does without **--output**.
  **local**: write the resulting build files to a directory on the client-side.

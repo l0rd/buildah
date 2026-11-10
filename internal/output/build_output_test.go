@@ -130,6 +130,18 @@ func TestGetBuildOutput(t *testing.T) {
 			invalid:     true,
 		},
 		{
+			description: "cacheonly",
+			input:       "type=cacheonly",
+			output: BuildOutputOption{
+				Type: BuildOutputCacheOnly,
+			},
+		},
+		{
+			description: "name-with-cacheonly",
+			input:       "type=cacheonly,name=example.com/image",
+			invalid:     true,
+		},
+		{
 			description: "missing-type",
 			input:       "name=example.com/image",
 			invalid:     true,

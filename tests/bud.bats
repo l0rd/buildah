@@ -3073,6 +3073,27 @@ _EOF
   expect_output --substring 'missing required key "dest"'
 }
 
+@test "build with custom build output to cacheonly" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  local imgname="img-$(safename)"
+  run_buildah build --layers --output type=cacheonly $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  run_buildah 125 inspect --type image $imgname
+  expect_output --substring "image not known"
+
+  # The layers were kept as build cache.
+  run_buildah build --layers $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  expect_output --substring " Using cache"
+
+  run_buildah 125 build --output type=cacheonly --output type=image $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring "cacheonly can not be combined"
+}
+
 @test "build with custom build output to registry" {
   _prefetch alpine
   mytmpdir=${TEST_SCRATCH_DIR}/my-dir
