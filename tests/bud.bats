@@ -2949,6 +2949,25 @@ _EOF
   expect_output --substring 'rogue'
 }
 
+@test "build with custom build output from a cached last step" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN touch cached-file
+_EOF
+  # Populate the layer cache.
+  run_buildah build --layers $WITH_POLICY_JSON -t test-bud -f $mytmpdir/Containerfile .
+  # The last step now comes from the cache: the outputs must still have its content.
+  run_buildah build --layers --output type=local,dest=$mytmpdir/rootfs $WITH_POLICY_JSON -t test-bud -f $mytmpdir/Containerfile .
+  expect_output --substring "Using cache"
+  test -e $mytmpdir/rootfs/cached-file
+  run_buildah build --layers --output type=tar,dest=$mytmpdir/rootfs.tar $WITH_POLICY_JSON -t test-bud -f $mytmpdir/Containerfile .
+  run tar -tf $mytmpdir/rootfs.tar
+  expect_output --substring "cached-file"
+}
+
 @test "build with custom build output and output rootfs to tar" {
   _prefetch alpine
   mytmpdir=${TEST_SCRATCH_DIR}/my-dir
