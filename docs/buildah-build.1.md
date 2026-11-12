@@ -801,11 +801,18 @@ The value for --output is a comma-separated sequence of key=value pairs,
 defining the output type and options.
 
 Supported _keys_ are:
- **dest**: Destination for exported output. Can be set to `-` to indicate standard output, or to an absolute or relative path.
+ **dest**: Destination for exported output. Can be set to `-` to indicate standard output, or to an absolute or relative path. Ignored by the **image** and **registry** types.
+ **name**: An additional name for the image, used like a **--tag** value. Only valid with the **docker**, **image**, **oci** and **registry** types.
+ **push**: With **type=image**, `true` to also push the image to a registry, like **type=registry**.
  **type**: Defines the type of output to be written. Must be one of the values listed below.
 
 Valid _type_ values are:
+ **cacheonly**: build the image without exporting it: the image is not given the **--tag** names. With **--layers**, it is kept in local storage as build cache for later builds. Cannot be combined with other **--output** values.
+ **docker**: without **dest**, the same as **image**. With **dest**, also save the image to a `docker-archive` file, recording its names (from **--tag** and **name**) in it. **dest** cannot be `-`.
+ **image**: write the image to local storage. This is what a build does without **--output**.
  **local**: write the resulting build files to a directory on the client-side.
+ **oci**: write the image to local storage and save it to the `oci-archive` file **dest**, which is required and cannot be `-`. The archive records the first name of the image.
+ **registry**: write the image to local storage and push it to a registry, using each of its names (from **--tag** and **name**) as the destination. Needs at least one name.
  **tar**: write the resulting files as a single tarball (.tar).
 
 Alternatively, instead of a comma-separated sequence, the value of **--output**

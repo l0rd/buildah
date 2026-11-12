@@ -3017,6 +3017,108 @@ _EOF
   expect_output --substring 'invalid'
 }
 
+@test "build with custom build output to image" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  local imgname="img-$(safename)"
+  run_buildah build --output type=image --iidfile $mytmpdir/iid1 $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  run_buildah inspect --format '{{.FromImageID}}' $imgname
+  assert "sha256:$output" = "$(< $mytmpdir/iid1)" "type=image writes the image to local storage"
+
+  run_buildah build --output type=image,name=$imgname-n --iidfile $mytmpdir/iid2 $WITH_POLICY_JSON -t $imgname-t -f $mytmpdir/Containerfile .
+  run_buildah images --format '{{.Name}}' --filter id=$(sed s/sha256:// $mytmpdir/iid2)
+  assert "$output" =~ "localhost/$imgname-t" "image tagged with --tag"
+  assert "$output" =~ "localhost/$imgname-n" "image tagged with name="
+
+  run_buildah build --output type=image,name=$imgname-only --iidfile $mytmpdir/iid3 $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  run_buildah images --format '{{.Name}}' --filter id=$(sed s/sha256:// $mytmpdir/iid3)
+  assert "$output" =~ "localhost/$imgname-only" "image named with name= and no --tag"
+
+  run_buildah 125 build --output type=local,dest=$mytmpdir/out,name=$imgname $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring 'key "name" is not supported with type "local"'
+}
+
+@test "build with custom build output to docker and oci" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  local imgname="img-$(safename)"
+  run_buildah build --output type=docker --iidfile $mytmpdir/iid $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  run_buildah inspect --format '{{.FromImageID}}' $imgname
+  assert "sha256:$output" = "$(< $mytmpdir/iid)" "type=docker without dest writes the image to local storage"
+
+  run_buildah build --output type=docker,dest=$mytmpdir/docker.tar,name=$imgname-n $WITH_POLICY_JSON -t $imgname-t -f $mytmpdir/Containerfile .
+  run tar -xOf $mytmpdir/docker.tar manifest.json
+  assert "$status" = 0 "docker.tar is a docker archive"
+  assert "$output" =~ "localhost/$imgname-t:latest" "docker archive has the --tag name"
+  assert "$output" =~ "localhost/$imgname-n:latest" "docker archive has the name= name"
+  run_buildah pull -q $WITH_POLICY_JSON docker-archive:$mytmpdir/docker.tar
+
+  run_buildah build --output type=oci,dest=$mytmpdir/oci.tar $WITH_POLICY_JSON -t $imgname-o -f $mytmpdir/Containerfile .
+  run tar -xOf $mytmpdir/oci.tar index.json
+  assert "$status" = 0 "oci.tar is an OCI archive"
+  assert "$output" =~ "localhost/$imgname-o:latest" "OCI archive has the --tag name"
+  run_buildah pull -q $WITH_POLICY_JSON oci-archive:$mytmpdir/oci.tar
+
+  run_buildah 125 build --output type=oci $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring 'missing required key "dest"'
+}
+
+@test "build with custom build output to cacheonly" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  local imgname="img-$(safename)"
+  run_buildah build --layers --output type=cacheonly $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  run_buildah 125 inspect --type image $imgname
+  expect_output --substring "image not known"
+
+  # The layers were kept as build cache.
+  run_buildah build --layers $WITH_POLICY_JSON -t $imgname -f $mytmpdir/Containerfile .
+  expect_output --substring " Using cache"
+
+  run_buildah 125 build --output type=cacheonly --output type=image $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring "cacheonly can not be combined"
+}
+
+@test "build with custom build output to registry" {
+  _prefetch alpine
+  mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+  mkdir -p $mytmpdir
+  cat > $mytmpdir/Containerfile << _EOF
+FROM alpine
+RUN echo 'hello'> hello
+_EOF
+  start_registry
+  local imgname="localhost:${REGISTRY_PORT}/img-$(safename)"
+  local pushopts="--tls-verify=false --creds testuser:testpassword"
+
+  run_buildah 125 build --output type=registry $pushopts $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  expect_output --substring "a name for the image is needed when pushing it to a registry"
+
+  run_buildah build --output type=registry --iidfile $mytmpdir/iid1 $pushopts $WITH_POLICY_JSON -t $imgname:one -f $mytmpdir/Containerfile .
+  run_buildah build --output type=image,push=true,name=$imgname:two --iidfile $mytmpdir/iid2 $pushopts $WITH_POLICY_JSON -f $mytmpdir/Containerfile .
+  run_buildah rmi -f $(< $mytmpdir/iid1) $(< $mytmpdir/iid2)
+
+  run_buildah pull -q $pushopts $WITH_POLICY_JSON $imgname:one
+  assert "sha256:$output" = "$(< $mytmpdir/iid1)" "type=registry pushed the image named with --tag"
+  run_buildah pull -q $pushopts $WITH_POLICY_JSON $imgname:two
+  assert "sha256:$output" = "$(< $mytmpdir/iid2)" "type=image,push=true pushed the image named with name="
+}
+
 @test "bud-from-scratch-untagged" {
   run_buildah build --iidfile ${TEST_SCRATCH_DIR}/output.iid $WITH_POLICY_JSON $BUDFILES/from-scratch
   iid=$(< ${TEST_SCRATCH_DIR}/output.iid)
